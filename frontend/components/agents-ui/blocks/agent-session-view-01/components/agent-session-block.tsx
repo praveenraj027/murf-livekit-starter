@@ -1,272 +1,136 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, type MotionProps, motion } from 'motion/react';
+import React, { useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { Mic, MicOff, MessageSquareText, PhoneOff } from 'lucide-react';
 import { useAgent, useSessionContext, useSessionMessages } from '@livekit/components-react';
 import { AgentChatTranscript } from '@/components/agents-ui/agent-chat-transcript';
-import {
-  AgentControlBar,
-  type AgentControlBarControls,
-} from '@/components/agents-ui/agent-control-bar';
-import { Shimmer } from '@/components/ai-elements/shimmer';
+import { AgentStatusPill } from '@/components/agents-ui/agent-status-pill';
+import { SignatureLine } from '@/components/agents-ui/signature-line';
+import { useInputControls } from '@/hooks/agents-ui/use-agent-control-bar';
 import { cn } from '@/lib/shadcn/utils';
-import { TileLayout } from './tile-view';
-
-const MotionMessage = motion.create(Shimmer);
-
-const BOTTOM_VIEW_MOTION_PROPS: MotionProps = {
-  variants: {
-    visible: {
-      opacity: 1,
-      translateY: '0%',
-    },
-    hidden: {
-      opacity: 0,
-      translateY: '100%',
-    },
-  },
-  initial: 'hidden',
-  animate: 'visible',
-  exit: 'hidden',
-  transition: {
-    duration: 0.3,
-    delay: 0.5,
-    ease: 'easeOut',
-  },
-};
-
-const CHAT_MOTION_PROPS: MotionProps = {
-  variants: {
-    hidden: {
-      opacity: 0,
-      transition: {
-        ease: 'easeOut',
-        duration: 0.3,
-      },
-    },
-    visible: {
-      opacity: 1,
-      transition: {
-        delay: 0.2,
-        ease: 'easeOut',
-        duration: 0.3,
-      },
-    },
-  },
-  initial: 'hidden',
-  animate: 'visible',
-  exit: 'hidden',
-};
-
-const SHIMMER_MOTION_PROPS: MotionProps = {
-  variants: {
-    visible: {
-      opacity: 1,
-      transition: {
-        ease: 'easeIn',
-        duration: 0.5,
-        delay: 0.8,
-      },
-    },
-    hidden: {
-      opacity: 0,
-      transition: {
-        ease: 'easeIn',
-        duration: 0.5,
-        delay: 0,
-      },
-    },
-  },
-  initial: 'hidden',
-  animate: 'visible',
-  exit: 'hidden',
-};
-
-interface FadeProps {
-  top?: boolean;
-  bottom?: boolean;
-  className?: string;
-}
-
-export function Fade({ top = false, bottom = false, className }: FadeProps) {
-  return (
-    <div
-      className={cn(
-        'from-background pointer-events-none h-4 bg-linear-to-b to-transparent',
-        top && 'bg-linear-to-b',
-        bottom && 'bg-linear-to-t',
-        className
-      )}
-    />
-  );
-}
 
 export interface AgentSessionView_01Props {
-  /**
-   * Message shown above the controls before the first chat message is sent.
-   *
-   * @default 'Agent is listening, ask it a question'
-   */
-  preConnectMessage?: string;
-  /**
-   * Enables or disables the chat toggle and transcript input controls.
-   *
-   * @default true
-   */
+  /** Show the live transcript toggle. @default true */
   supportsChatInput?: boolean;
-  /**
-   * Enables or disables camera controls in the bottom control bar.
-   *
-   * @default true
-   */
-  supportsVideoInput?: boolean;
-  /**
-   * Enables or disables screen sharing controls in the bottom control bar.
-   *
-   * @default true
-   */
-  supportsScreenShare?: boolean;
-  /**
-   * Shows a pre-connect buffer state with a shimmer message before messages appear.
-   *
-   * @default true
-   */
-  isPreConnectBufferEnabled?: boolean;
-
-  /** Selects the visualizer style rendered in the main tile area. */
-  audioVisualizerType?: 'bar' | 'wave' | 'grid' | 'radial' | 'aura';
-  /** Primary hex color used by supported audio visualizer variants. */
-  audioVisualizerColor?: `#${string}`;
-  /** Hue shift intensity used by certain visualizers. */
-  audioVisualizerColorShift?: number;
-  /** Number of bars to render when `audioVisualizerType` is `bar`. */
-  audioVisualizerBarCount?: number;
-  /** Number of rows in the visualizer when `audioVisualizerType` is `grid`. */
-  audioVisualizerGridRowCount?: number;
-  /** Number of columns in the visualizer when `audioVisualizerType` is `grid`. */
-  audioVisualizerGridColumnCount?: number;
-  /** Number of radial bars when `audioVisualizerType` is `radial`. */
-  audioVisualizerRadialBarCount?: number;
-  /** Base radius of the radial visualizer when `audioVisualizerType` is `radial`. */
-  audioVisualizerRadialRadius?: number;
-  /** Stroke width of the wave path when `audioVisualizerType` is `wave`. */
-  audioVisualizerWaveLineWidth?: number;
-  /** Optional class name merged onto the outer `<section>` container. */
+  /** Optional class name merged onto the outer container. */
   className?: string;
 }
 
+/**
+ * The live call, in the ledger language: a status in mono, the reactive
+ * signature line as the stage, and a small, quiet control bar.
+ */
 export function AgentSessionView_01({
-  preConnectMessage = 'Agent is listening, ask it a question',
   supportsChatInput = true,
-  supportsVideoInput = true,
-  supportsScreenShare = true,
-  isPreConnectBufferEnabled = true,
-
-  audioVisualizerType,
-  audioVisualizerColor,
-  audioVisualizerColorShift,
-  audioVisualizerBarCount,
-  audioVisualizerGridRowCount,
-  audioVisualizerGridColumnCount,
-  audioVisualizerRadialBarCount,
-  audioVisualizerRadialRadius,
-  audioVisualizerWaveLineWidth,
   ref,
   className,
   ...props
 }: React.ComponentProps<'section'> & AgentSessionView_01Props) {
   const session = useSessionContext();
   const { messages } = useSessionMessages(session);
-  const [chatOpen, setChatOpen] = useState(false);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { state: agentState } = useAgent();
-
-  const controls: AgentControlBarControls = {
-    leave: true,
-    microphone: true,
-    chat: supportsChatInput,
-    camera: supportsVideoInput,
-    screenShare: supportsScreenShare,
-  };
-
-  useEffect(() => {
-    const lastMessage = messages.at(-1);
-    const lastMessageIsLocal = lastMessage?.from?.isLocal === true;
-
-    if (scrollAreaRef.current && lastMessageIsLocal) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
-    }
-  }, [messages]);
+  const { microphoneToggle } = useInputControls();
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
 
   return (
-    <section
-      ref={ref}
-      className={cn('bg-background relative z-10 h-full w-full overflow-hidden', className)}
-      {...props}
-    >
-      <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
-      {/* transcript */}
+    <section ref={ref} className={cn('relative h-full w-full overflow-hidden', className)} {...props}>
+      {/* Voice stage */}
+      <motion.div
+        className="absolute inset-0 grid place-content-center px-6"
+        animate={{ opacity: transcriptOpen ? 0.15 : 1 }}
+        transition={{ duration: 0.3 }}
+      >
+        <div className="mx-auto flex w-full max-w-xl flex-col items-center">
+          <AgentStatusPill />
+          <SignatureLine className="mt-10" />
+          <p className="text-muted-foreground mt-7 max-w-xs text-center font-mono text-[10px] leading-relaxed tracking-[0.18em] uppercase">
+            Speak naturally · you can interrupt any time
+          </p>
+        </div>
+      </motion.div>
 
-      <div className="absolute top-0 bottom-[135px] flex w-full flex-col md:bottom-[170px]">
-        <AnimatePresence>
-          {chatOpen && (
-            <motion.div
-              {...CHAT_MOTION_PROPS}
-              className="flex h-full w-full flex-col gap-4 space-y-3 transition-opacity duration-300 ease-out"
-            >
+      {/* Live transcript */}
+      <AnimatePresence>
+        {transcriptOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute inset-x-0 top-20 bottom-28 z-20 mx-auto flex max-w-xl flex-col px-6 md:bottom-32"
+          >
+            <div className="border-border bg-card/95 flex h-full w-full flex-col overflow-hidden rounded-2xl border shadow-lg backdrop-blur">
+              <div className="border-border/70 flex items-center justify-between border-b px-4 py-2.5">
+                <span className="text-muted-foreground font-mono text-[10px] tracking-[0.2em] uppercase">
+                  Transcript
+                </span>
+                <AgentStatusPill />
+              </div>
               <AgentChatTranscript
                 agentState={agentState}
                 messages={messages}
-                className="mx-auto w-full max-w-2xl [&_.is-user>div]:rounded-[22px] [&>div>div]:px-4 [&>div>div]:pt-40 md:[&>div>div]:px-6"
+                className="min-h-0 flex-1 overflow-y-auto px-3 py-3 [&>div>div]:px-1"
               />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-      {/* Tile layout */}
-      <TileLayout
-        chatOpen={chatOpen}
-        audioVisualizerType={audioVisualizerType}
-        audioVisualizerColor={audioVisualizerColor}
-        audioVisualizerColorShift={audioVisualizerColorShift}
-        audioVisualizerBarCount={audioVisualizerBarCount}
-        audioVisualizerRadialBarCount={audioVisualizerRadialBarCount}
-        audioVisualizerRadialRadius={audioVisualizerRadialRadius}
-        audioVisualizerGridRowCount={audioVisualizerGridRowCount}
-        audioVisualizerGridColumnCount={audioVisualizerGridColumnCount}
-        audioVisualizerWaveLineWidth={audioVisualizerWaveLineWidth}
-      />
-      {/* Bottom */}
-      <motion.div
-        {...BOTTOM_VIEW_MOTION_PROPS}
-        className="absolute inset-x-3 bottom-0 z-50 md:inset-x-12"
-      >
-        {/* Pre-connect message */}
-        {isPreConnectBufferEnabled && (
-          <AnimatePresence>
-            {messages.length === 0 && (
-              <MotionMessage
-                key="pre-connect-message"
-                duration={2}
-                aria-hidden={messages.length > 0}
-                {...SHIMMER_MOTION_PROPS}
-                className="pointer-events-none mx-auto block w-full max-w-2xl pb-4 text-center text-sm font-semibold"
-              >
-                {preConnectMessage}
-              </MotionMessage>
-            )}
-          </AnimatePresence>
+            </div>
+          </motion.div>
         )}
-        <div className="bg-background relative mx-auto max-w-2xl pb-3 md:pb-12">
-          <Fade bottom className="absolute inset-x-0 top-0 h-4 -translate-y-full" />
-          <AgentControlBar
-            variant="livekit"
-            controls={controls}
-            isChatOpen={chatOpen}
-            isConnected={session.isConnected}
-            onDisconnect={session.end}
-            onIsChatOpenChange={setChatOpen}
-          />
+      </AnimatePresence>
+
+      {/* Controls */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3, duration: 0.4 }}
+        className="absolute inset-x-0 bottom-8 z-30 flex justify-center px-6 md:bottom-12"
+      >
+        <div className="border-border bg-card/90 flex items-center gap-2 rounded-full border p-2 shadow-sm backdrop-blur">
+          {/* Microphone */}
+          <button
+            type="button"
+            onClick={() => microphoneToggle.toggle()}
+            disabled={microphoneToggle.pending}
+            aria-pressed={microphoneToggle.enabled}
+            aria-label={microphoneToggle.enabled ? 'Mute microphone' : 'Unmute microphone'}
+            className={cn(
+              'flex size-11 items-center justify-center rounded-full transition-colors disabled:opacity-50',
+              microphoneToggle.enabled
+                ? 'bg-secondary text-ink hover:bg-accent'
+                : 'bg-destructive/10 text-destructive hover:bg-destructive/15'
+            )}
+          >
+            {microphoneToggle.enabled ? <Mic className="size-5" /> : <MicOff className="size-5" />}
+          </button>
+
+          {/* Transcript */}
+          {supportsChatInput && (
+            <button
+              type="button"
+              onClick={() => setTranscriptOpen((open) => !open)}
+              aria-pressed={transcriptOpen}
+              aria-label="Toggle transcript"
+              className={cn(
+                'flex size-11 items-center justify-center rounded-full transition-colors',
+                transcriptOpen
+                  ? 'bg-ink text-paper'
+                  : 'bg-secondary text-ink hover:bg-accent'
+              )}
+            >
+              <MessageSquareText className="size-5" />
+            </button>
+          )}
+
+          <div className="bg-border mx-1 h-6 w-px" />
+
+          {/* End call */}
+          <button
+            type="button"
+            onClick={session.end}
+            className="text-destructive bg-destructive/10 hover:bg-destructive/15 flex h-11 items-center gap-2 rounded-full px-5 font-mono text-[11px] font-bold tracking-[0.15em] uppercase transition-colors"
+          >
+            <PhoneOff className="size-4" />
+            <span>End call</span>
+          </button>
         </div>
       </motion.div>
     </section>

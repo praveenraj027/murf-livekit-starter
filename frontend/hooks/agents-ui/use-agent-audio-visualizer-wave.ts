@@ -63,11 +63,15 @@ export function useAgentAudioVisualizerWave({
         animateOpacity(1.0, DEFAULT_TRANSITION);
         return;
       case 'listening':
+      case 'pre-connect-buffering':
+      case 'idle':
+        // Your turn: the volume effect below drives the shape from the live
+        // mic. Keep a gentle breathing baseline so a resting line still lives.
         setSpeed(DEFAULT_SPEED);
         animateAmplitude(DEFAULT_AMPLITUDE, DEFAULT_TRANSITION);
         animateFrequency(DEFAULT_FREQUENCY, DEFAULT_TRANSITION);
-        animateOpacity([1.0, 0.3], {
-          duration: 0.75,
+        animateOpacity([1.0, 0.45], {
+          duration: 1.1,
           repeat: Infinity,
           repeatType: 'mirror',
         });
@@ -94,10 +98,20 @@ export function useAgentAudioVisualizerWave({
     }
   }, [state, setSpeed, animateAmplitude, animateFrequency, animateOpacity]);
 
+  // Drive the wave from the live audio level so it reads like a real signal —
+  // for both the agent (speaking) and the user (listening). Bigger, snappier
+  // response than the stock visualizer.
   useEffect(() => {
-    if (state === 'speaking') {
-      animateAmplitude(0.015 + 0.4 * volume, { duration: 0 });
-      animateFrequency(20 + 60 * volume, { duration: 0 });
+    const isVoiceActive =
+      state === 'speaking' ||
+      state === 'listening' ||
+      state === 'pre-connect-buffering' ||
+      state === 'idle';
+
+    if (isVoiceActive) {
+      const base = state === 'speaking' ? 0.03 : 0.02;
+      animateAmplitude(base + 0.95 * volume, { duration: 0.08 });
+      animateFrequency(18 + 70 * volume, { duration: 0.08 });
     }
   }, [state, volume, animateAmplitude, animateFrequency]);
 

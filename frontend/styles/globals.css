@@ -4,79 +4,101 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * "Ledger Line" identity — Dhan Saathi.
+ * A calm, institutional-trust look framed like a bank passbook:
+ * cool paper, deep ink, one restrained brass accent, and a living ledger
+ * line as the signature. Light-only by design.
+ */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.5rem;
+
+  /* Named palette */
+  --paper: #f4f6f5; /* cool off-white ledger paper (not cream) */
+  --ink: #16202a; /* deep ink navy — primary text & actions */
+  --ink-soft: #59636e; /* muted slate — secondary text */
+  --brass: #9a7a45; /* the single accent — the living line */
+  --brass-soft: #b79a6b;
+  --rule: #e2e5e2; /* hairline rulings */
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: #ffffff;
+  --card-foreground: var(--ink);
+  --popover: #ffffff;
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: #f7f8f6;
+  --secondary: #eceff0;
+  --secondary-foreground: var(--ink);
+  --muted: #eceff0;
+  --muted-foreground: var(--ink-soft);
+  --accent: #e9edee;
+  --accent-foreground: var(--ink);
+  --destructive: #a9432f; /* muted brick — never a bright alarm red */
+  --border: var(--rule);
+  --input: var(--rule);
+  --ring: var(--brass);
+  --chart-1: var(--brass);
+  --chart-2: var(--ink);
+  --chart-3: var(--ink-soft);
+  --chart-4: var(--brass-soft);
+  --chart-5: var(--rule);
+  --sidebar: var(--paper);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--ink);
+  --sidebar-primary-foreground: var(--paper);
+  --sidebar-accent: #e9edee;
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--rule);
+  --sidebar-ring: var(--brass);
 }
 
+/*
+ * Dark "Ledger Line" — a night ledger. Deep ink-navy canvas, warm off-white
+ * ink, and the brass accent turned up a stop so it glows on dark.
+ */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.269 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.371 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.439 0 0);
+  --paper: #0f1620; /* deep ink-navy canvas (not pure black) */
+  --ink: #eceee9; /* warm off-white — now the "ink" on a dark page */
+  --ink-soft: #939ba6; /* lighter slate for secondary text */
+  --brass: #c9a86b; /* brass, brightened for dark */
+  --brass-soft: #d8bd8a;
+  --rule: rgba(236, 238, 233, 0.12); /* hairline rulings as light-on-dark */
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: #161e29;
+  --card-foreground: var(--ink);
+  --popover: #161e29;
+  --popover-foreground: var(--ink);
+  --primary: var(--ink); /* light button on dark, dark label */
+  --primary-foreground: #0f1620;
+  --secondary: #1c2531;
+  --secondary-foreground: var(--ink);
+  --muted: #1c2531;
+  --muted-foreground: var(--ink-soft);
+  --accent: #212b38;
+  --accent-foreground: var(--ink);
+  --destructive: #d0715a; /* muted brick, lifted for dark */
+  --border: var(--rule);
+  --input: rgba(236, 238, 233, 0.16);
+  --ring: var(--brass);
+  --sidebar: var(--paper);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--ink);
+  --sidebar-primary-foreground: var(--paper);
+  --sidebar-accent: #212b38;
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--rule);
+  --sidebar-ring: var(--brass);
 }
 
 @theme inline {
   --font-sans:
     var(--font-public-sans), ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
     'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-serif: var(--font-fraunces), ui-serif, Georgia, Cambria, 'Times New Roman', serif;
   --font-mono:
     var(--font-commit-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     'Liberation Mono', 'Courier New', monospace;
@@ -99,6 +121,12 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brass: var(--brass);
+  --color-brass-soft: var(--brass-soft);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-paper: var(--paper);
+  --color-rule: var(--rule);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -116,14 +144,47 @@
 
 @layer base {
   * {
-    @apply border-foreground/20 outline-ring/50;
+    @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
   }
+  /* Mono figures should be tabular — it's a ledger. */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
-/* A single, slow breathing glow behind the logo — subtle, not flashy. */
+/*
+ * Signature: the ledger baseline. A single hairline rule the voice line
+ * sits on, with faint passbook tick marks fading toward the edges.
+ */
+.ledger-baseline {
+  background-image: repeating-linear-gradient(
+    to right,
+    color-mix(in srgb, var(--foreground) 12%, transparent) 0,
+    color-mix(in srgb, var(--foreground) 12%, transparent) 1px,
+    transparent 1px,
+    transparent 28px
+  );
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+}
+
+/* The solid centre rule the line is written on. */
+.ledger-rule {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--foreground) 20%, transparent) 20%,
+    color-mix(in srgb, var(--foreground) 20%, transparent) 80%,
+    transparent
+  );
+}
+
+/* ---- Motion --------------------------------------------------------- */
+
+/* Slow, calm breathing used behind the mark and the resting line. */
 @keyframes breathe {
   0%,
   100% {
@@ -132,16 +193,29 @@
   }
   50% {
     opacity: 0.6;
-    transform: scale(1.08);
+    transform: scale(1.06);
   }
 }
-
 .animate-breathe {
   animation: breathe 6s ease-in-out infinite;
 }
 
+/* A pen drawing the ledger line across the page (used when connecting). */
+@keyframes draw-across {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.animate-draw-across {
+  animation: draw-across 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-breathe {
+  .animate-breathe,
+  .animate-draw-across {
     animation: none;
   }
 }

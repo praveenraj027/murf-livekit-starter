@@ -1,4 +1,4 @@
-import { Public_Sans } from 'next/font/google';
+import { Fraunces, Public_Sans } from 'next/font/google';
 import localFont from 'next/font/local';
 import { headers } from 'next/headers';
 import { ThemeProvider } from '@/components/app/theme-provider';
@@ -10,6 +10,15 @@ import '@/styles/globals.css';
 const publicSans = Public_Sans({
   variable: '--font-public-sans',
   subsets: ['latin'],
+});
+
+// Display face — a considered, low-drama serif for headlines. Paired with a
+// humanist sans (Public Sans) and a mono for ledger figures.
+const fraunces = Fraunces({
+  variable: '--font-fraunces',
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  style: ['normal', 'italic'],
 });
 
 const commitMono = localFont({
@@ -47,7 +56,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
   const hdrs = await headers();
   const appConfig = await getAppConfig(hdrs);
   const styles = getStyles(appConfig);
-  const { pageTitle, pageDescription, companyName, logo, logoDark } = appConfig;
+  const { pageTitle, pageDescription } = appConfig;
 
   return (
     <html
@@ -55,6 +64,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
       suppressHydrationWarning
       className={cn(
         publicSans.variable,
+        fraunces.variable,
         commitMono.variable,
         'scroll-smooth font-sans antialiased'
       )}
@@ -67,43 +77,29 @@ export default async function RootLayout({ children }: RootLayoutProps) {
       <body className="overflow-x-hidden">
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="dark"
+          enableSystem={false}
           disableTransitionOnChange
         >
-          <header className="fixed top-0 left-0 z-50 hidden w-full flex-row justify-between p-6 md:flex">
-            <a
-              target="_blank"
-              rel="noopener noreferrer"
-              href="https://livekit.io"
-              className="scale-100 transition-transform duration-300 hover:scale-110"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logo} alt={`${companyName} Logo`} className="block size-6 dark:hidden" />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={logoDark ?? logo}
-                alt={`${companyName} Logo`}
-                className="hidden size-6 dark:block"
-              />
-            </a>
-            <span className="text-foreground font-mono text-xs font-bold tracking-wider uppercase">
-              Built with{' '}
-              <a
-                target="_blank"
-                rel="noopener noreferrer"
-                href="https://docs.livekit.io/agents"
-                className="underline underline-offset-4"
-              >
-                LiveKit Agents
-              </a>
+          {/* Passbook account header — a fine ruled bar across the top. */}
+          <header className="border-border/70 fixed top-0 left-0 z-50 flex w-full flex-row items-center justify-between border-b bg-background/80 px-5 py-3 backdrop-blur-sm md:px-8">
+            <span className="flex items-center gap-2.5">
+              <span className="border-brass/40 text-brass flex size-6 items-center justify-center rounded-full border font-serif text-[13px] leading-none">
+                ₹
+              </span>
+              <span className="text-foreground text-[15px] font-medium tracking-tight">
+                Dhan Saathi
+              </span>
             </span>
+            <div className="flex items-center gap-4">
+              <span className="text-muted-foreground hidden font-mono text-[10px] font-medium tracking-[0.18em] uppercase sm:inline">
+                Financial Literacy Helpline
+              </span>
+              <ThemeToggle />
+            </div>
           </header>
 
           {children}
-          <div className="group fixed bottom-0 left-1/2 z-50 mb-2 -translate-x-1/2">
-            <ThemeToggle className="translate-y-20 transition-transform delay-150 duration-300 group-hover:translate-y-0" />
-          </div>
         </ThemeProvider>
       </body>
     </html>

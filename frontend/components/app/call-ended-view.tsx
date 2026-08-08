@@ -1,23 +1,20 @@
 'use client';
 
 import { motion } from 'motion/react';
-import { LockKey } from '@phosphor-icons/react/dist/ssr';
 import { SignatureLine } from '@/components/agents-ui/signature-line';
 import { Button } from '@/components/ui/button';
 
-interface WelcomeViewProps {
-  startButtonText: string;
+interface CallEndedViewProps {
   onStartCall: () => void;
 }
 
 const container = {
   hidden: {},
   show: {
-    transition: { staggerChildren: 0.12, delayChildren: 0.1 },
+    transition: { staggerChildren: 0.12, delayChildren: 0.08 },
   },
 };
 
-// A quiet fade-and-rise. The elegance is entirely in the easing.
 const item = {
   hidden: { opacity: 0, y: 14 },
   show: {
@@ -27,11 +24,13 @@ const item = {
   },
 };
 
-export const WelcomeView = ({
-  startButtonText,
+/**
+ * Call ended — the line settles flat. A warm sign-off and one clear way back.
+ */
+export const CallEndedView = ({
   onStartCall,
   ref,
-}: React.ComponentProps<'div'> & WelcomeViewProps) => {
+}: React.ComponentProps<'div'> & CallEndedViewProps) => {
   return (
     <div ref={ref}>
       <motion.section
@@ -42,29 +41,28 @@ export const WelcomeView = ({
       >
         <motion.p
           variants={item}
-          className="text-brass font-mono text-[11px] font-medium tracking-[0.22em] uppercase"
+          className="text-muted-foreground font-mono text-[11px] font-medium tracking-[0.22em] uppercase"
         >
-          A free voice helpline
+          Call ended
         </motion.p>
 
         <motion.h1
           variants={item}
-          className="text-foreground mt-5 font-serif text-[40px] leading-[1.08] font-medium tracking-tight text-balance md:text-[52px]"
+          className="text-foreground mt-5 font-serif text-[36px] leading-[1.1] font-medium tracking-tight md:text-[44px]"
         >
-          Money, explained in plain words.
+          Take care of your money.
         </motion.h1>
 
         <motion.p
           variants={item}
           className="text-muted-foreground mt-5 max-w-md text-[15px] leading-relaxed text-pretty md:text-base"
         >
-          Ask Dhan Saathi about bank accounts, saving, UPI safety, and government schemes — out
-          loud, in simple language, whenever you need.
+          Thank you for talking with Dhan Saathi. Come back any time you have a question — the
+          helpline is always here.
         </motion.p>
 
-        {/* The signature: the resting ledger line. */}
         <motion.div variants={item} className="mt-10 w-full">
-          <SignatureLine stateOverride="listening" />
+          <SignatureLine stateOverride="disconnected" />
         </motion.div>
 
         <motion.div variants={item} className="mt-8">
@@ -73,22 +71,10 @@ export const WelcomeView = ({
             onClick={onStartCall}
             className="h-12 w-64 rounded-full px-8 font-mono text-[11px] font-bold tracking-[0.18em] uppercase transition-transform duration-200 hover:-translate-y-0.5"
           >
-            {startButtonText}
+            Start again
           </Button>
         </motion.div>
       </motion.section>
-
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.9, duration: 0.7 }}
-        className="fixed bottom-6 left-0 flex w-full items-center justify-center px-6"
-      >
-        <p className="text-muted-foreground flex items-center gap-2 text-center text-xs leading-5 text-pretty">
-          <LockKey weight="fill" className="text-brass size-3.5 shrink-0" />
-          Dhan Saathi will never ask for your OTP, PIN, or password.
-        </p>
-      </motion.div>
     </div>
   );
 };
