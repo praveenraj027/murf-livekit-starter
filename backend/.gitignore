@@ -11,6 +11,9 @@ KMS
 .pytest_cache
 .ruff_cache
 
+# Day 4 — persistent caller memory (local data, do not commit)
+*.db
+
 # Claude Code
 .claude/settings.local.json
 .claude/worktrees/

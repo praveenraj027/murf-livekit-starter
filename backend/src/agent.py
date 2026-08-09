@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from dotenv import load_dotenv
@@ -8,11 +9,15 @@ from livekit.agents import (
     AgentSession,
     JobContext,
     JobProcess,
+    RunContext,
     cli,
+    function_tool,
     room_io,
 )
 from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
+
+import memory
 
 logger = logging.getLogger("agent")
 
@@ -40,6 +45,20 @@ You know the basics of bank accounts, saving and budgeting, UPI and digital paym
 LANGUAGE
 Speak in simple English by default. If the caller mixes in Hindi words, you may mix a little back in the same everyday register so it feels natural, but keep English as your main language. If the caller clearly switches fully to Hindi or another language, follow them. Be warm and respectful, and keep every word simple enough for someone new to banking.
 
+LANGUAGE & SCRIPT
+Always write every language in its own native script.
+- Hindi must be written in Devanagari, like नमस्ते, never romanized like "namaste".
+- Follow the same rule for every other non-English language.
+
+MEMORY
+You can remember callers across calls using two tools.
+- Early in the call, warmly ask the caller's name. As soon as they tell you, call recall_caller with that name to check if you have spoken before.
+- If they are a returning caller, greet them by name and continue from last time. For example, mention a scheme they had already checked and ask how it went. Do not re-ask things you already know.
+- If they are new, just continue the conversation normally.
+- Before you save anything, you MUST first tell the caller you would like to remember this and ask if that is okay. This is a hard rule for a finance helpline. Only if they clearly say yes, call remember_caller. If they say no, do not save, and reassure them.
+- Save only useful, non-sensitive facts for finance help, such as which government schemes they have already checked and their eligibility answers, like age band or whether they have a bank account. Never save an OTP, PIN, CVV, password, or any account, card, or ID number.
+- If a caller asks you to forget them, call forget_caller and confirm it is done.
+
 GUARDRAILS
 These are hard rules. Never break them.
 - Never ask for, or accept, an OTP, PIN, UPI PIN, CVV, password, or full card or account number. If the caller starts to share one, stop them at once and warn that these must never be told to anyone, not even to you.
@@ -59,7 +78,7 @@ You are speaking out loud, not writing. Use short sentences, under twenty words.
 
 # First-turn greeting — spoken in simple English as soon as the agent joins.
 # It opens with the core safety promise, which also sets up the guardrail demo.
-GREETING = "Hello! I am Dhan Saathi, your money helper. I explain banking, saving, and government schemes in simple words. One important thing first. I will never ask for your OTP or PIN, and please never share them with anyone. So, how can I help you today?"
+GREETING = "Hello! I am Dhan Saathi, your money helper. I explain banking, saving, and government schemes in simple words. One important thing first. I will never ask for your OTP or PIN, and please never share them with anyone. May I know your name?"
 
 
 class Assistant(Agent):
@@ -70,22 +89,87 @@ class Assistant(Agent):
         # Speak the first-turn greeting as soon as Saathi joins the call.
         await self.session.say(GREETING, allow_interruptions=True)
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
+    @function_tool
+    async def recall_caller(self, context: RunContext, name: str):
+        """Look up whether you have spoken with this caller before, by their name.
+
+        Call this as soon as the caller tells you their name, before continuing
+        the conversation. If a record is found, use it to greet them by name and
+        continue from where you left off last time. Do not read the raw data out
+        loud; weave it in naturally.
+
+        Args:
+            name: The caller's name, exactly as they told you.
+        """
+        user_id = memory.make_user_id(name)
+        record = await asyncio.to_thread(memory.get_caller, user_id)
+        if record is None:
+            logger.info("No record for %s (%s) — new caller", name, user_id)
+            return (
+                f"No saved record for {name}. This is a new caller. Greet them "
+                "normally. Later, remember to ask permission before saving anything."
+            )
+        logger.info("Recalled returning caller %s", user_id)
+        return {
+            "returning_caller": True,
+            "name": record["name"],
+            "language_preference": record["language_preference"],
+            "facts": record["facts"],
+            "last_interaction": record["last_interaction"],
+        }
+
+    @function_tool
+    async def remember_caller(
+        self,
+        context: RunContext,
+        name: str,
+        schemes_checked: str = "",
+        eligibility: str = "",
+        other_notes: str = "",
+        language_preference: str = "",
+    ):
+        """Save what you learned about the caller so you can help them better next time.
+
+        IMPORTANT: Only call this AFTER the caller has clearly agreed to be
+        remembered. Never save an OTP, PIN, CVV, password, or any account, card,
+        or ID number. Leave any argument empty if you did not learn it. Pass only
+        plain words, no numbers that could identify an account.
+
+        Args:
+            name: The caller's name.
+            schemes_checked: Government schemes the caller has already looked into,
+                e.g. "Jan Dhan, Atal Pension Yojana".
+            eligibility: Plain eligibility answers, e.g. "age 45, has a bank account".
+            other_notes: Any other useful, non-sensitive detail to remember.
+            language_preference: The language the caller prefers, e.g. "Hindi" or "English".
+        """
+        facts = {
+            "schemes_checked": schemes_checked,
+            "eligibility": eligibility,
+            "notes": other_notes,
+        }
+        # Only keep fields the agent actually learned, so blanks don't overwrite
+        # what we already saved for a returning caller.
+        facts = {k: v for k, v in facts.items() if v.strip()}
+        user_id = memory.make_user_id(name)
+        record = await asyncio.to_thread(
+            memory.upsert_caller, user_id, name, facts, language_preference or None
+        )
+        logger.info("Remembered caller %s: %s", user_id, record["facts"])
+        return f"Saved. I will remember this for {name} next time."
+
+    @function_tool
+    async def forget_caller(self, context: RunContext, name: str):
+        """Delete everything you have saved about a caller, if they ask to be forgotten.
+
+        Args:
+            name: The caller's name.
+        """
+        user_id = memory.make_user_id(name)
+        removed = await asyncio.to_thread(memory.forget_caller, user_id)
+        if removed:
+            return f"Done. I have forgotten everything saved about {name}."
+        return f"There was nothing saved about {name} to forget."
 
 
 server = AgentServer()
@@ -110,12 +194,14 @@ async def my_agent(ctx: JobContext):
     session = AgentSession(
         # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
         # See all available models at https://docs.livekit.io/agents/models/stt/
-        stt=deepgram.STT(model="nova-3"),
+        # "multi" lets Deepgram detect Hindi (and other) speech, not just English,
+        # so returning callers can be greeted in their own language.
+        stt=deepgram.STT(model="nova-3", language="multi"),
         # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
         # See all available models at https://docs.livekit.io/agents/models/llm/
         llm=google.LLM(
-                model="gemini-3.5-flash-lite",
-            ),
+            model="gemini-3.5-flash-lite",
+        ),
         # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
         # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
         # Indian English voice (Murf Falcon 2) — required for the challenge.
@@ -123,9 +209,9 @@ async def my_agent(ctx: JobContext):
         # smooth speech. A tiny min_sentence_len or text_pacing chops the audio
         # into fragments and adds lag, so we leave both off.
         tts=murf.TTS(
-                voice="en-IN-anisha",
-                style="Conversation",
-            ),
+            voice="en-IN-anisha",
+            style="Conversation",
+        ),
         # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
         # See more at https://docs.livekit.io/agents/build/turns
         turn_detection=MultilingualModel(),
