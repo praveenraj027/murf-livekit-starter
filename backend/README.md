@@ -173,6 +173,46 @@ Default is Google Gemini. To switch:
 - **Gemini (default):** Set `GOOGLE_API_KEY` in `.env.local`
 - **OpenAI:** Set `OPENAI_API_KEY`, install `livekit-agents[openai]`, and change the `llm=` argument
 
+## Tools (Day 5)
+
+The agent has a function-calling tool that fetches real domain data instead of
+guessing: **government scheme eligibility + document checklist**.
+
+### `check_scheme_eligibility`
+
+Given the plain answers a caller gives — their age, whether they have a bank
+account, and (optionally) a young daughter's age — the tool works out which
+major central government schemes they qualify for and returns each scheme's
+benefit, the eligibility rule, and the exact **document checklist**. The LLM
+decides on its own when to call it, based only on the tool's description in
+[`src/agent.py`](src/agent.py).
+
+Schemes covered: Jan Dhan (PMJDY), Jeevan Jyoti Bima (PMJJBY), Suraksha Bima
+(PMSBY), Atal Pension Yojana (APY), and Sukanya Samriddhi (SSY).
+
+**Live or local?** The data is **LOCAL**, not a live government API. Scheme
+rules, benefit/premium figures, and document lists are hand-curated in
+[`data/schemes.json`](data/schemes.json) from the official guidelines
+(jansuraksha.gov.in, npscra.nsdl.co.in, pmjdy.gov.in, and the India Post SSY
+rules), and were current as of the `as_of` date in that file (**2025-04-01**).
+The agent always speaks that date and adds that exact amounts must be confirmed
+at the bank — because "as of April" and "today" are different decisions for the
+person listening. A live government API was not used because there is no clean,
+free, reliable eligibility API; the curated dataset is the honest fallback the
+Day 5 brief allows.
+
+**Failure path (spoken, not silent).** The dataset is read fresh on every call.
+If `data/schemes.json` is missing or unreadable, the tool returns
+`{"status": "error", ...}` and the agent speaks a graceful fallback ("I can't
+check the scheme list right now, please try again shortly or visit your bank")
+instead of going silent or inventing a scheme. To demo this, rename the file:
+
+```bash
+mv data/schemes.json data/schemes.json.bak   # kill the data source
+# ... ask the agent a scheme question, hear the graceful fallback ...
+mv data/schemes.json.bak data/schemes.json    # restore
+```
+
 ## Testing
 
 The project includes an eval suite based on the LiveKit Agents [testing framework](https://docs.livekit.io/agents/build/testing/):
@@ -211,9 +251,14 @@ docker run --env-file .env.local murf-voice-agent
 ```
 backend/
 ├── src/
-│   └── agent.py          # Agent entrypoint — pipeline, prompt, config
+│   ├── agent.py          # Agent entrypoint — pipeline, prompt, tools, config
+│   ├── memory.py         # Day 4 — persistent caller memory (SQLite)
+│   └── schemes.py        # Day 5 — scheme eligibility + document lookup
+├── data/
+│   └── schemes.json      # Day 5 — curated (local) scheme dataset with as_of date
 ├── tests/
-│   └── test_agent.py     # LLM-judged eval suite
+│   ├── test_agent.py     # LLM-judged eval suite
+│   └── test_schemes.py   # Offline unit tests for the scheme tool
 ├── .env.example           # Environment variable template
 ├── pyproject.toml         # Python dependencies (uv)
 ├── Dockerfile             # Production container

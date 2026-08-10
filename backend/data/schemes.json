@@ -1,0 +1,117 @@
+{
+  "as_of": "2025-04-01",
+  "source_note": "Curated by hand from the official scheme guidelines (jansuraksha.gov.in, npscra.nsdl.co.in, pmjdy.gov.in, and the India Post Sukanya Samriddhi rules). This is a LOCAL dataset, not a live government API. Premium and cover amounts are the figures notified as of the as_of date and must still be reconfirmed at the bank before enrolling.",
+  "schemes": [
+    {
+      "id": "pmjdy",
+      "name": "Pradhan Mantri Jan Dhan Yojana",
+      "name_spoken_hi": "प्रधानमंत्री जन धन योजना",
+      "category": "Zero-balance bank account",
+      "benefit": "A basic bank account with no minimum balance, a free RuPay debit card, up to two lakh rupees accident insurance on the card, and an overdraft facility of up to ten thousand rupees for eligible accounts.",
+      "eligibility": {
+        "age_min": 10,
+        "age_max": 120,
+        "requires_bank_account": false,
+        "gender": "any",
+        "girl_child_only": false
+      },
+      "eligibility_spoken": "Any Indian citizen aged ten or above can open one. You do not need an existing bank account, this is how you get one.",
+      "documents": [
+        "Aadhaar card, or any one officially valid document like voter ID, driving licence, or passport",
+        "One passport-size photo",
+        "If you have no valid document, a small-account can still be opened with a self-attested photo and signature or thumb impression"
+      ],
+      "official_source": "pmjdy.gov.in"
+    },
+    {
+      "id": "pmjjby",
+      "name": "Pradhan Mantri Jeevan Jyoti Bima Yojana",
+      "name_spoken_hi": "प्रधानमंत्री जीवन ज्योति बीमा योजना",
+      "category": "Life insurance",
+      "benefit": "Life insurance cover of two lakh rupees paid to your family if the policyholder passes away, for any reason.",
+      "premium": "Around four hundred thirty six rupees per year, auto-debited from your bank account.",
+      "eligibility": {
+        "age_min": 18,
+        "age_max": 50,
+        "requires_bank_account": true,
+        "gender": "any",
+        "girl_child_only": false
+      },
+      "eligibility_spoken": "For people aged eighteen to fifty who have a savings bank account and agree to yearly auto-debit of the premium.",
+      "documents": [
+        "A savings bank account",
+        "Aadhaar card linked to that account",
+        "A signed consent form for yearly auto-debit of the premium",
+        "Nominee details"
+      ],
+      "official_source": "jansuraksha.gov.in"
+    },
+    {
+      "id": "pmsby",
+      "name": "Pradhan Mantri Suraksha Bima Yojana",
+      "name_spoken_hi": "प्रधानमंत्री सुरक्षा बीमा योजना",
+      "category": "Accident insurance",
+      "benefit": "Accident insurance of two lakh rupees for death or full disability, and one lakh rupees for partial disability, from an accident.",
+      "premium": "Just twenty rupees per year, auto-debited from your bank account.",
+      "eligibility": {
+        "age_min": 18,
+        "age_max": 70,
+        "requires_bank_account": true,
+        "gender": "any",
+        "girl_child_only": false
+      },
+      "eligibility_spoken": "For people aged eighteen to seventy who have a savings bank account and agree to yearly auto-debit of the premium.",
+      "documents": [
+        "A savings bank account",
+        "Aadhaar card linked to that account",
+        "A signed consent form for yearly auto-debit of the premium",
+        "Nominee details"
+      ],
+      "official_source": "jansuraksha.gov.in"
+    },
+    {
+      "id": "apy",
+      "name": "Atal Pension Yojana",
+      "name_spoken_hi": "अटल पेंशन योजना",
+      "category": "Pension",
+      "benefit": "A guaranteed monthly pension of one thousand to five thousand rupees after you turn sixty, depending on how much you contribute now.",
+      "premium": "A small monthly contribution based on your age and chosen pension amount.",
+      "eligibility": {
+        "age_min": 18,
+        "age_max": 40,
+        "requires_bank_account": true,
+        "gender": "any",
+        "girl_child_only": false
+      },
+      "eligibility_spoken": "For people aged eighteen to forty who have a savings bank account. The younger you join, the smaller your monthly contribution.",
+      "documents": [
+        "A savings bank account",
+        "Aadhaar card",
+        "An active mobile number",
+        "Nominee details"
+      ],
+      "official_source": "npscra.nsdl.co.in"
+    },
+    {
+      "id": "ssy",
+      "name": "Sukanya Samriddhi Yojana",
+      "name_spoken_hi": "सुकन्या समृद्धि योजना",
+      "category": "Savings for a girl child",
+      "benefit": "A long-term savings account for a girl child that earns a high, government-set interest rate, with tax benefits. It can be used later for her education or marriage.",
+      "eligibility": {
+        "age_min": 0,
+        "age_max": 10,
+        "requires_bank_account": false,
+        "gender": "female",
+        "girl_child_only": true
+      },
+      "eligibility_spoken": "For a girl child below ten years of age. A parent or guardian opens and runs the account for her at a bank or post office.",
+      "documents": [
+        "The girl child's birth certificate",
+        "The parent or guardian's identity proof, like Aadhaar",
+        "The parent or guardian's address proof"
+      ],
+      "official_source": "India Post / any authorised bank"
+    }
+  ]
+}

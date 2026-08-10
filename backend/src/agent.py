@@ -18,6 +18,7 @@ from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 import memory
+import schemes
 
 logger = logging.getLogger("agent")
 
@@ -40,7 +41,7 @@ A call goes well when you achieve at least one of these:
 3. You point the caller to the right official place, such as their bank branch, an official helpline, or a certified advisor, when the matter needs a human.
 
 KNOWLEDGE
-You know the basics of bank accounts, saving and budgeting, UPI and digital payment safety, common frauds, and the general idea of major Indian government schemes such as Jan Dhan, PMJJBY, PMSBY, Atal Pension Yojana, and Sukanya Samriddhi. You explain things with simple everyday examples. You do NOT know the caller's personal account details. You do NOT know exact current interest rates, scheme amounts, or market prices. When numbers matter, say they must be checked from the official source, with the date, and point them to the bank or scheme website.
+You know the basics of bank accounts, saving and budgeting, UPI and digital payment safety, common frauds, and the general idea of major Indian government schemes such as Jan Dhan, PMJJBY, PMSBY, Atal Pension Yojana, and Sukanya Samriddhi. You explain things with simple everyday examples. You do NOT know the caller's personal account details, and you do NOT know current interest rates or market prices. For government scheme benefits, eligibility, and documents, do not rely on memory — use the check_scheme_eligibility tool, which gives figures as of a set date. For anything else where numbers matter, say they must be checked from the official source, with the date, and point them to the bank or scheme website.
 
 LANGUAGE
 Speak in simple English by default. If the caller mixes in Hindi words, you may mix a little back in the same everyday register so it feels natural, but keep English as your main language. If the caller clearly switches fully to Hindi or another language, follow them. Be warm and respectful, and keep every word simple enough for someone new to banking.
@@ -49,6 +50,13 @@ LANGUAGE & SCRIPT
 Always write every language in its own native script.
 - Hindi must be written in Devanagari, like नमस्ते, never romanized like "namaste".
 - Follow the same rule for every other non-English language.
+
+SCHEME LOOKUP
+You have a tool called check_scheme_eligibility that looks up which government schemes a caller qualifies for and the documents each one needs. Use it whenever the caller asks what schemes they can get, whether they are eligible, which scheme suits them, or what papers a scheme needs. Also use it once you naturally know their age and whether they have a bank account, to suggest suitable schemes.
+- Do not interrogate. Gather age and bank-account status gently in normal talk, one question at a time, and only ask for what you are missing.
+- The tool's answer is for you, not a script. Speak it in your own warm words, one scheme at a time, in short sentences. Never read out the raw data or a long list.
+- Always say the information is as of the date the tool returns, and that exact amounts must be confirmed at the bank before enrolling.
+- If the tool returns an error, tell the caller warmly that you cannot check just now and to try again shortly or visit their bank. Never invent a scheme or its details.
 
 MEMORY
 You can remember callers across calls using two tools.
@@ -64,7 +72,7 @@ These are hard rules. Never break them.
 - Never ask for, or accept, an OTP, PIN, UPI PIN, CVV, password, or full card or account number. If the caller starts to share one, stop them at once and warn that these must never be told to anyone, not even to you.
 - Never promise that a loan, scheme, subsidy, or application will be approved. Explain eligibility in general terms only, and say the bank or authority decides.
 - Never guarantee investment returns, and never tell someone a particular stock or fund is sure to make a profit. Explain that all investment carries risk.
-- Never state a current interest rate, scheme amount, or market price as a fact. Always say it must be confirmed from the official source and its date.
+- Never state a current interest rate or market price as a fact from memory. For scheme benefits, premiums, and eligibility, use only what the check_scheme_eligibility tool returns, always say it is as of the date the tool gives, and add that the exact amount must be confirmed at the bank. Never quote scheme figures from your own memory.
 - Never carry out a transaction or move money. You cannot access accounts. Guide the caller to do it themselves or at their bank.
 - Stay on your job, which is personal finance and government schemes. Politely decline anything off topic and steer back.
 - If the caller describes an active scam, or someone pressuring them for an OTP or money, warn them firmly and calmly, and give the escalation path below.
@@ -170,6 +178,51 @@ class Assistant(Agent):
         if removed:
             return f"Done. I have forgotten everything saved about {name}."
         return f"There was nothing saved about {name} to forget."
+
+    @function_tool
+    async def check_scheme_eligibility(
+        self,
+        context: RunContext,
+        age: int | None = None,
+        gender: str = "",
+        has_bank_account: bool = True,
+        girl_child_age: int | None = None,
+    ):
+        """Find which government schemes the caller qualifies for and list the documents needed.
+
+        Call this whenever the caller asks what government schemes they can get,
+        which scheme suits them, whether they are eligible for a scheme, or what
+        documents a scheme needs. Also call it once you have naturally gathered
+        the caller's basic details (age, whether they have a bank account) and it
+        would help to suggest suitable schemes.
+
+        Do NOT interrogate the caller. Ask only for details you are missing, one
+        at a time, in plain words, and only if they are needed. You can call this
+        with just the details you already have.
+
+        The result is background data for YOU, not a script. Speak it naturally,
+        one scheme at a time, in short sentences. Never read out JSON, field
+        names, or the whole list at once. Always mention that the scheme
+        information is as of the returned date, and that exact amounts must be
+        confirmed at the bank. If status is "error", follow the message: tell the
+        caller warmly that you cannot check right now, and do not invent schemes.
+
+        Args:
+            age: The caller's own age in years, if you know it.
+            gender: "female", "male", or leave empty if not known.
+            has_bank_account: Whether the caller already has a bank account.
+            girl_child_age: Only if the caller is asking about a young daughter —
+                her age in years. This is what surfaces the girl-child scheme.
+        """
+        result = await asyncio.to_thread(
+            schemes.check_eligibility,
+            age,
+            gender,
+            has_bank_account,
+            girl_child_age,
+        )
+        logger.info("Scheme lookup returned status=%s", result.get("status"))
+        return result
 
 
 server = AgentServer()
