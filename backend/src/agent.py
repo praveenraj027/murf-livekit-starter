@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from dotenv import load_dotenv
-from livekit import rtc
+from livekit import api, rtc
 from livekit.agents import (
     Agent,
     AgentServer,
@@ -18,7 +18,9 @@ from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 import memory
+import outbound
 import schemes
+from outbound import OutboundContext, Outcome
 
 logger = logging.getLogger("agent")
 
@@ -90,12 +92,58 @@ GREETING = "Hello! I am Dhan Saathi, your money helper. I explain banking, savin
 
 
 class Assistant(Agent):
-    def __init__(self) -> None:
-        super().__init__(instructions=SYSTEM_PROMPT)
+    def __init__(
+        self,
+        *,
+        greeting: str = GREETING,
+        instructions: str = SYSTEM_PROMPT,
+        ctx: JobContext | None = None,
+        outbound_ctx: OutboundContext | None = None,
+    ) -> None:
+        super().__init__(instructions=instructions)
+        # Inbound uses the default greeting/prompt. Outbound passes a tailored
+        # opening (who's calling, why, how to stop) and a context so end_call can
+        # hang up the phone and record how the call went.
+        self._greeting = greeting
+        self._ctx = ctx
+        self._outbound = outbound_ctx
 
     async def on_enter(self) -> None:
         # Speak the first-turn greeting as soon as Saathi joins the call.
-        await self.session.say(GREETING, allow_interruptions=True)
+        await self.session.say(self._greeting, allow_interruptions=True)
+
+    @function_tool
+    async def end_call(self, context: RunContext, opted_out: bool = False):
+        """Hang up the phone. Use this ONLY on an outbound call, once the reminder
+        is delivered and there is nothing more the person needs, OR the moment the
+        person asks you to stop or not call again.
+
+        Let your final sentence finish first — say your short goodbye, THEN call
+        this. Do not use it to dodge a genuine question.
+
+        Args:
+            opted_out: Set True if the person asked to stop / not be called again,
+                so we record that and never call them back. Leave False for a
+                normal, friendly end after the reminder was delivered.
+        """
+        if self._ctx is None:
+            # Inbound call — there is no PSTN leg to hang up. Just acknowledge.
+            return "This is not an outbound call, so there is nothing to hang up."
+
+        if self._outbound is not None:
+            result = Outcome.OPTED_OUT if opted_out else Outcome.COMPLETED
+            outbound.record_outcome(self._ctx.room.name, result, self._outbound)
+
+        # Let the goodbye finish playing before we cut the line.
+        speech = context.session.current_speech
+        if speech is not None:
+            await speech.wait_for_playout()
+
+        logger.info("Ending call in room %s (opted_out=%s)", self._ctx.room.name, opted_out)
+        await self._ctx.api.room.delete_room(
+            api.DeleteRoomRequest(room=self._ctx.room.name)
+        )
+        return "Call ended."
 
     @function_tool
     async def recall_caller(self, context: RunContext, name: str):
@@ -292,21 +340,55 @@ async def my_agent(ctx: JobContext):
     # # Start the avatar and wait for it to join
     # await avatar.start(session, room=ctx.room)
 
-    # Start the session, which initializes the voice pipeline and warms up the models
-    await session.start(
-        agent=Assistant(),
-        room=ctx.room,
-        room_options=room_io.RoomOptions(
-            audio_input=room_io.AudioInputOptions(
-                noise_cancellation=lambda params: (
-                    noise_cancellation.BVCTelephony()
-                    if params.participant.kind
-                    == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
-                    else noise_cancellation.BVC()
-                ),
+    # Shared room options: telephony-tuned noise cancellation for the SIP leg,
+    # studio-grade for a browser participant.
+    room_options = room_io.RoomOptions(
+        audio_input=room_io.AudioInputOptions(
+            noise_cancellation=lambda params: (
+                noise_cancellation.BVCTelephony()
+                if params.participant.kind
+                == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+                else noise_cancellation.BVC()
             ),
         ),
     )
+
+    # Is this an OUTBOUND call? The dispatcher (make_call.py) packs the target
+    # phone number into the job metadata; its presence is what flips us outbound.
+    outbound_ctx = OutboundContext.from_metadata(ctx.job.metadata)
+
+    if outbound_ctx is not None:
+        # --- Day 6: the agent places the call -------------------------------
+        # Connect to the room first, then dial the person through the SIP trunk.
+        # dial_out blocks until they answer (or the dial fails), so we never
+        # start talking to a dead room.
+        await ctx.connect()
+        result = await outbound.dial_out(
+            ctx.api, ctx.room.name, outbound_ctx.phone_number
+        )
+        if result is not Outcome.ANSWERED:
+            # No answer / busy / declined / trunk error: record it so the
+            # dispatcher can apply its retry rule, then end the job cleanly.
+            outbound.record_outcome(ctx.room.name, result, outbound_ctx)
+            ctx.shutdown(reason=f"outbound dial {result.value}")
+            return
+
+        outbound.record_outcome(ctx.room.name, Outcome.ANSWERED, outbound_ctx)
+        await session.start(
+            agent=Assistant(
+                greeting=outbound_ctx.opening(),
+                instructions=SYSTEM_PROMPT + outbound_ctx.prompt_addendum(),
+                ctx=ctx,
+                outbound_ctx=outbound_ctx,
+            ),
+            room=ctx.room,
+            room_options=room_options,
+        )
+        return
+
+    # --- Inbound (Days 1-5): wait for a browser/SIP caller to join ----------
+    # Start the session, which initializes the voice pipeline and warms up the models
+    await session.start(agent=Assistant(), room=ctx.room, room_options=room_options)
 
     # Join the room and connect to the user
     await ctx.connect()
