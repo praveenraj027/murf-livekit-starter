@@ -17,6 +17,7 @@ from livekit.agents import (
 from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
+import escalation
 import memory
 import outbound
 import schemes
@@ -82,6 +83,39 @@ These are hard rules. Never break them.
 ESCALATION SCRIPT
 For account problems, disputes, or fraud, say something warm like: "Iske liye aap apne bank ko unke official number par turant call karein. Agar paisa fraud mein gaya hai, toh cyber crime helpline one nine three zero par call karein, ya cybercrime dot gov dot in par report karein."
 
+HUMAN HELP (when to hand off to a real person)
+You are a guide, not a bank officer. Some problems are bigger than a helpline and
+you must stop and raise a request for a human. There are exactly TWO such moments:
+1. The caller reports possible FRAUD or a SCAM — money already gone, an unknown
+   debit, or someone pressuring them for an OTP, PIN, or payment.
+2. The caller has a DISPUTE or needs a DECISION you cannot make — a wrong
+   deduction, a blocked or frozen account, a failed transaction, a refund, or a
+   complaint that only a bank officer can settle.
+Do NOT escalate for a normal question you can answer, like how a scheme works or
+which documents are needed. Keep handling those yourself. Escalation is only for
+the two moments above.
+
+When one of those moments happens, follow these steps in order:
+- First give the caller the immediate safety advice from the ESCALATION SCRIPT
+  (call the bank, cyber helpline 1930). A human request is in addition to that,
+  not instead of it.
+- Then tell the caller, in plain words, that you would like to raise a request so
+  a real person from the helpline team can follow up. Say exactly what you would
+  share: their first name, what happened, how urgent it is, their language, and
+  how they would like to be reached. Make clear you will NOT share any OTP, PIN,
+  or account number.
+- ASK PERMISSION. Only if they clearly say yes, call the create_escalation tool.
+  If they say no, do not create anything; reassure them and give the self-help
+  path only. This permission step is a hard rule.
+- Never put an OTP, PIN, CVV, password, or account, card, or ID number into the
+  request. Summarise in plain words only.
+- After the tool returns, give the caller their reference id, spelled out simply
+  (for example "E S C dash seven F three A"), and an HONEST next step: a team
+  member will review open requests and follow up, but you cannot promise it will
+  be instant. Do not invent a callback time.
+- If the tool signals this matches a request already open for them, tell them it
+  has been updated, not duplicated, and give the same reference id.
+
 STYLE
 You are speaking out loud, not writing. Use short sentences, under twenty words. No lists, no bullet points, no symbols, and no emojis. Share one idea at a time, then pause for the caller to respond. If the caller goes quiet, gently check if they are still there. Stay calm, patient, and trustworthy.
 """
@@ -139,7 +173,9 @@ class Assistant(Agent):
         if speech is not None:
             await speech.wait_for_playout()
 
-        logger.info("Ending call in room %s (opted_out=%s)", self._ctx.room.name, opted_out)
+        logger.info(
+            "Ending call in room %s (opted_out=%s)", self._ctx.room.name, opted_out
+        )
         await self._ctx.api.room.delete_room(
             api.DeleteRoomRequest(room=self._ctx.room.name)
         )
@@ -272,6 +308,74 @@ class Assistant(Agent):
         logger.info("Scheme lookup returned status=%s", result.get("status"))
         return result
 
+    @function_tool
+    async def create_escalation(
+        self,
+        context: RunContext,
+        caller_name: str,
+        reason: str,
+        summary: str,
+        checked: str = "",
+        urgency: str = "high",
+        language: str = "",
+        follow_up: str = "",
+    ):
+        """Raise a request for a real human to follow up on this caller's problem.
+
+        Call this ONLY for the two escalation moments in the HUMAN HELP section:
+        (1) the caller reports possible fraud or a scam, or (2) the caller has a
+        dispute or needs a decision you cannot make. Do NOT call it for a normal
+        question you can answer yourself.
+
+        HARD RULE: you MUST have asked the caller for permission and heard a clear
+        "yes" before calling this. If they said no, do not call it.
+
+        Never pass an OTP, PIN, CVV, password, or any account, card, or ID number
+        in any field. Summarise in plain words only. A backstop strips stray
+        numbers, but you must not include them in the first place.
+
+        Args:
+            caller_name: The caller's first name, as they gave it.
+            reason: "suspected_fraud" for fraud or a scam, or "dispute_or_decision"
+                for a dispute or a decision only a human can make.
+            summary: One or two plain sentences on what happened — the useful
+                facts a human needs, no sensitive numbers.
+            checked: What you already told or tried, e.g. "advised to call bank
+                and cyber helpline 1930; confirmed no OTP was shared".
+            urgency: "low", "medium", "high", or "emergency". Use "emergency" only
+                for active, in-progress money loss or pressure right now.
+            language: The caller's preferred language, e.g. "Hindi" or "English".
+            follow_up: How the caller wants to be reached, in plain words, e.g.
+                "call back" or "send an SMS". Never a full account or card number.
+        """
+        record = await asyncio.to_thread(
+            escalation.create_escalation,
+            caller_name=caller_name,
+            reason=reason,
+            summary=summary,
+            checked=checked,
+            urgency=urgency,
+            language=language,
+            follow_up=follow_up,
+        )
+        logger.info(
+            "Escalation %s created (reason=%s, duplicate=%s)",
+            record["ref_id"],
+            reason,
+            record.get("was_duplicate"),
+        )
+        return {
+            "reference_id": record["ref_id"],
+            "urgency": record["urgency"],
+            "was_duplicate": record.get("was_duplicate", False),
+            "forwarded_to_team": record.get("webhook_sent", False),
+            "next_step": (
+                "A helpline team member will review open requests and follow up. "
+                "Give the caller this reference id and be honest that you cannot "
+                "promise an instant reply."
+            ),
+        }
+
 
 server = AgentServer()
 
@@ -346,8 +450,7 @@ async def my_agent(ctx: JobContext):
         audio_input=room_io.AudioInputOptions(
             noise_cancellation=lambda params: (
                 noise_cancellation.BVCTelephony()
-                if params.participant.kind
-                == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+                if params.participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
                 else noise_cancellation.BVC()
             ),
         ),

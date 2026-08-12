@@ -1,6 +1,7 @@
 import { Fraunces, Public_Sans } from 'next/font/google';
 import localFont from 'next/font/local';
 import { headers } from 'next/headers';
+import Link from 'next/link';
 import { ThemeProvider } from '@/components/app/theme-provider';
 import { ThemeToggle } from '@/components/app/theme-toggle';
 import { cn } from '@/lib/shadcn/utils';
@@ -82,19 +83,25 @@ export default async function RootLayout({ children }: RootLayoutProps) {
           disableTransitionOnChange
         >
           {/* Passbook account header — a fine ruled bar across the top. */}
-          <header className="border-border/70 fixed top-0 left-0 z-50 flex w-full flex-row items-center justify-between border-b bg-background/80 px-5 py-3 backdrop-blur-sm md:px-8">
-            <span className="flex items-center gap-2.5">
+          <header className="border-border/70 bg-background/80 fixed top-0 left-0 z-50 flex w-full flex-row items-center justify-between border-b px-5 py-3 backdrop-blur-sm md:px-8">
+            <Link href="/" className="flex items-center gap-2.5">
               <span className="border-brass/40 text-brass flex size-6 items-center justify-center rounded-full border font-serif text-[13px] leading-none">
                 ₹
               </span>
               <span className="text-foreground text-[15px] font-medium tracking-tight">
                 Dhan Saathi
               </span>
-            </span>
+            </Link>
             <div className="flex items-center gap-4">
               <span className="text-muted-foreground hidden font-mono text-[10px] font-medium tracking-[0.18em] uppercase sm:inline">
                 Financial Literacy Helpline
               </span>
+              <Link
+                href="/help-desk"
+                className="text-muted-foreground hover:text-foreground font-mono text-[10px] font-medium tracking-[0.18em] uppercase transition-colors"
+              >
+                Help desk
+              </Link>
               <ThemeToggle />
             </div>
           </header>

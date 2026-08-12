@@ -351,12 +351,64 @@ are **never** retried — the point is to respect the person, not pester them.
 uv run python src/make_call.py +919876543210 --retries 2 --retry-delay 60
 ```
 
+## Human Help / Escalations (Day 7)
+
+The agent is a guide, not a bank officer. Day 7 teaches it to **stop and ask a
+real person** in the two situations a finance helpline must never guess on:
+
+1. **Possible fraud or scam** — money already gone, an unknown debit, or someone
+   pressuring the caller for an OTP or payment.
+2. **A dispute or a decision the agent cannot make** — a wrong deduction, a
+   blocked account, a failed transaction, or a refund/complaint that only a bank
+   officer can settle.
+
+Everything else (how a scheme works, which documents are needed) the agent keeps
+handling itself, so a normal conversation never raises a request.
+
+### How it works
+
+- The `create_escalation` tool ([`src/escalation.py`](src/escalation.py)) stores
+  each request in a tiny SQLite table (`escalations.db`, gitignored) and hands
+  back a short, speakable reference id like `ESC-7F3A2C`.
+- **Permission first.** The prompt requires the agent to tell the caller exactly
+  what it will share (first name, what happened, urgency, language, follow-up)
+  and get a clear "yes" before the tool is called. If they say no, nothing is
+  saved.
+- **Only the useful summary is stored** — never the transcript. `_redact` is a
+  hard backstop that strips anything looking like an OTP, PIN, card, account, or
+  Aadhaar number before it is stored or forwarded.
+- **Honest next step.** The caller gets the reference id and is told a team
+  member will review open requests and follow up — no promise of an instant reply.
+- **Urgency + dedup + status** (Advanced): requests carry a `low`/`medium`/`high`/
+  `emergency` level; a second report of the same problem from the same caller
+  updates the open request instead of duplicating it; a human can move a request
+  `open → in_progress → resolved`.
+
+### Where requests go
+
+A dependency-free help-desk dashboard shows open requests and lets a human work
+them. Run it in a second terminal while the agent runs:
+
+```bash
+uv run python src/dashboard.py        # then open http://localhost:8770
+```
+
+Optionally, set `ESCALATION_WEBHOOK_URL` in `.env.local` to also forward each
+new request (already redacted) to a **Discord/Slack incoming webhook** or any
+JSON endpoint. Leave it unset to rely on the local dashboard alone.
+
 ## Testing
 
 The project includes an eval suite based on the LiveKit Agents [testing framework](https://docs.livekit.io/agents/build/testing/):
 
 ```bash
 uv run pytest
+```
+
+The offline suites need no credentials and are the fast way to check the tools:
+
+```bash
+uv run pytest tests/test_escalation.py tests/test_schemes.py tests/test_outbound.py
 ```
 
 Tests are in [`tests/test_agent.py`](tests/test_agent.py) and use LLM-as-judge evaluations to verify the agent behaves correctly (friendly greetings, grounding, refusing harmful requests).
@@ -394,13 +446,17 @@ backend/
 │   ├── schemes.py        # Day 5 — scheme eligibility + document lookup
 │   ├── outbound.py       # Day 6 — outbound dial, safe opening, outcome + retry
 │   ├── make_call.py      # Day 6 — dispatcher that starts an outbound call
-│   └── setup_trunk.py    # Day 6 — one-time: create the LiveKit SIP outbound trunk
+│   ├── setup_trunk.py    # Day 6 — one-time: create the LiveKit SIP outbound trunk
+│   ├── escalation.py     # Day 7 — human-help store, redaction, ref ids, webhook
+│   └── dashboard.py      # Day 7 — help-desk page a human uses to work requests
 ├── data/
 │   ├── schemes.json      # Day 5 — curated (local) scheme dataset with as_of date
 │   └── call_log.jsonl    # Day 6 — per-attempt outcome log (gitignored, runtime)
 ├── tests/
 │   ├── test_agent.py     # LLM-judged eval suite
-│   └── test_schemes.py   # Offline unit tests for the scheme tool
+│   ├── test_schemes.py   # Offline unit tests for the scheme tool
+│   ├── test_outbound.py  # Offline unit tests for outbound calling
+│   └── test_escalation.py # Offline unit tests for human-help escalations
 ├── .env.example           # Environment variable template
 ├── pyproject.toml         # Python dependencies (uv)
 ├── Dockerfile             # Production container
