@@ -17,6 +17,7 @@ from livekit.agents import (
 from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
+import analytics
 import escalation
 import memory
 import outbound
@@ -61,14 +62,13 @@ You have a tool called check_scheme_eligibility that looks up which government s
 - Always say the information is as of the date the tool returns, and that exact amounts must be confirmed at the bank before enrolling.
 - If the tool returns an error, tell the caller warmly that you cannot check just now and to try again shortly or visit their bank. Never invent a scheme or its details.
 
-MEMORY
-You can remember callers across calls using two tools.
-- Early in the call, warmly ask the caller's name. As soon as they tell you, call recall_caller with that name to check if you have spoken before.
-- If they are a returning caller, greet them by name and continue from last time. For example, mention a scheme they had already checked and ask how it went. Do not re-ask things you already know.
-- If they are new, just continue the conversation normally.
-- Before you save anything, you MUST first tell the caller you would like to remember this and ask if that is okay. This is a hard rule for a finance helpline. Only if they clearly say yes, call remember_caller. If they say no, do not save, and reassure them.
-- Save only useful, non-sensitive facts for finance help, such as which government schemes they have already checked and their eligibility answers, like age band or whether they have a bank account. Never save an OTP, PIN, CVV, password, or any account, card, or ID number.
-- If a caller asks you to forget them, call forget_caller and confirm it is done.
+MEMORY — remembering callers across calls
+You have three tools: recall_caller, remember_caller, and forget_caller. Follow these steps exactly. They are how you stop a returning caller from having to repeat themselves, so treat them as part of the job, not an extra.
+1. RECALL FIRST. Warmly ask the caller's name early. The MOMENT they tell you their name, call recall_caller with that name — once, right away, before you continue talking. If a record comes back, greet them by name and carry on from last time: mention a scheme they had already checked and ask how it went, and do not re-ask what you already know. If nothing comes back, they are new; continue normally.
+2. OFFER TO REMEMBER AT THE END. When the call is wrapping up — the caller says bye, says thanks, says "that's all", or the help is clearly finished — AND you have learned at least one useful, non-sensitive fact (a scheme they asked about, their age band, or whether they have a bank account), you MUST, before your goodbye, say one short line naming what you would remember and ask permission, for example: "Before you go, may I remember that you asked about Jan Dhan, so I can help you faster next time?" This permission step is a hard rule for a finance helpline.
+3. SAVE ONLY ON A CLEAR YES. Only if they clearly agree, call remember_caller. Pass the ACTUAL facts as the values — schemes_checked like "Jan Dhan Yojana", eligibility like "age 45, has a bank account". Never pass a whole sentence, an instruction, or words like "asked to save" as a value; pass only the real fact. If they say no, do not save, and warmly reassure them.
+4. FORGET ON REQUEST. If a caller asks you to forget them, call forget_caller and confirm it is done.
+Never save an OTP, PIN, CVV, password, or any account, card, or ID number.
 
 GUARDRAILS
 These are hard rules. Never break them.
@@ -133,6 +133,7 @@ class Assistant(Agent):
         instructions: str = SYSTEM_PROMPT,
         ctx: JobContext | None = None,
         outbound_ctx: OutboundContext | None = None,
+        call_id: str | None = None,
     ) -> None:
         super().__init__(instructions=instructions)
         # Inbound uses the default greeting/prompt. Outbound passes a tailored
@@ -141,6 +142,10 @@ class Assistant(Agent):
         self._greeting = greeting
         self._ctx = ctx
         self._outbound = outbound_ctx
+        # The room name, for Day 8 call analytics. Set for both inbound and
+        # outbound (independent of _ctx, which stays outbound-only) so a success
+        # can be attributed to this call from any tool.
+        self._call_id = call_id
 
     async def on_enter(self) -> None:
         # Speak the first-turn greeting as soon as Saathi joins the call.
@@ -306,6 +311,13 @@ class Assistant(Agent):
             girl_child_age,
         )
         logger.info("Scheme lookup returned status=%s", result.get("status"))
+        # Day 8: a completed eligibility/document lookup is a success condition
+        # for this call (the caller got the concrete help they came for). An
+        # errored lookup is not counted — the call may still succeed another way.
+        if result.get("status") != "error":
+            await asyncio.to_thread(
+                analytics.mark_success, self._call_id, analytics.Success.ELIGIBILITY_CHECK.value
+            )
         return result
 
     @function_tool
@@ -364,6 +376,11 @@ class Assistant(Agent):
             reason,
             record.get("was_duplicate"),
         )
+        # Day 8: raising a human-help request is a success condition — the caller
+        # was safely routed to a real person for something we cannot settle.
+        await asyncio.to_thread(
+            analytics.mark_success, self._call_id, analytics.Success.HUMAN_ESCALATION.value
+        )
         return {
             "reference_id": record["ref_id"],
             "urgency": record["urgency"],
@@ -385,6 +402,16 @@ def prewarm(proc: JobProcess):
 
 
 server.setup_fnc = prewarm
+
+
+# Day 8: how an outbound dial that never connected reads in the call analytics.
+# An answered/completed call is scored by what happened during it, not here.
+_DIAL_OUTCOME_TO_FAILURE = {
+    Outcome.NO_ANSWER: analytics.Failure.NO_ANSWER.value,
+    Outcome.BUSY: analytics.Failure.BUSY.value,
+    Outcome.DECLINED: analytics.Failure.DECLINED.value,
+    Outcome.FAILED: analytics.Failure.DIAL_FAILED.value,
+}
 
 
 @server.rtc_session(agent_name="praveen's-agent")
@@ -460,19 +487,33 @@ async def my_agent(ctx: JobContext):
     # phone number into the job metadata; its presence is what flips us outbound.
     outbound_ctx = OutboundContext.from_metadata(ctx.job.metadata)
 
+    # Day 8: record the outcome of every call. Register a shutdown callback once
+    # so that however the job ends, we stamp the call's end time — and, if no
+    # success condition was reached during it, record it as a failed call.
+    async def _finalize_call(reason: str) -> None:
+        await asyncio.to_thread(analytics.end_call, ctx.room.name)
+
+    ctx.add_shutdown_callback(_finalize_call)
+
     if outbound_ctx is not None:
         # --- Day 6: the agent places the call -------------------------------
         # Connect to the room first, then dial the person through the SIP trunk.
         # dial_out blocks until they answer (or the dial fails), so we never
         # start talking to a dead room.
         await ctx.connect()
+        analytics.start_call(ctx.room.name, "phone")
         result = await outbound.dial_out(
             ctx.api, ctx.room.name, outbound_ctx.phone_number
         )
         if result is not Outcome.ANSWERED:
             # No answer / busy / declined / trunk error: record it so the
-            # dispatcher can apply its retry rule, then end the job cleanly.
+            # dispatcher can apply its retry rule, mark the call failed with the
+            # matching reason, then end the job cleanly.
             outbound.record_outcome(ctx.room.name, result, outbound_ctx)
+            analytics.mark_failure(
+                ctx.room.name,
+                _DIAL_OUTCOME_TO_FAILURE.get(result, analytics.Failure.DIAL_FAILED.value),
+            )
             ctx.shutdown(reason=f"outbound dial {result.value}")
             return
 
@@ -483,6 +524,7 @@ async def my_agent(ctx: JobContext):
                 instructions=SYSTEM_PROMPT + outbound_ctx.prompt_addendum(),
                 ctx=ctx,
                 outbound_ctx=outbound_ctx,
+                call_id=ctx.room.name,
             ),
             room=ctx.room,
             room_options=room_options,
@@ -490,8 +532,12 @@ async def my_agent(ctx: JobContext):
         return
 
     # --- Inbound (Days 1-5): wait for a browser/SIP caller to join ----------
-    # Start the session, which initializes the voice pipeline and warms up the models
-    await session.start(agent=Assistant(), room=ctx.room, room_options=room_options)
+    # Record the start of this browser call, then start the session, which
+    # initializes the voice pipeline and warms up the models.
+    analytics.start_call(ctx.room.name, "browser")
+    await session.start(
+        agent=Assistant(call_id=ctx.room.name), room=ctx.room, room_options=room_options
+    )
 
     # Join the room and connect to the user
     await ctx.connect()

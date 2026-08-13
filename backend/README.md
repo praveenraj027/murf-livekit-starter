@@ -397,6 +397,60 @@ Optionally, set `ESCALATION_WEBHOOK_URL` in `.env.local` to also forward each
 new request (already redacted) to a **Discord/Slack incoming webhook** or any
 JSON endpoint. Leave it unset to rely on the local dashboard alone.
 
+## Call Analytics (Day 8)
+
+Now that the agent can talk, remember, look things up, place calls, and ask for
+human help, Day 8 answers a different question: **how is it doing?**
+[`src/analytics.py`](src/analytics.py) records the outcome of **every** call —
+browser (inbound) and phone (outbound SIP) — and a tiny dashboard shows the three
+required numbers: **total, successful, and failed calls**.
+
+### What "success" means
+
+Decided from the Day 2 objectives (Financial Services track), kept simple and
+specific: a call is **successful** when the caller receives the concrete help the
+helpline exists for — measured as at least one substantive help action completing
+during the call:
+
+- a government-scheme **eligibility / document check** completed, or
+- a **human-help request** was raised for a fraud or dispute.
+
+A call is **failed** when it ends without reaching that condition. Failure is not
+necessarily a breakage — the caller may have hung up after the greeting, only
+chatted, gone off-topic, an outbound dial may never have connected, or a tool may
+have errored. It simply means the success condition was not met.
+
+### How it works
+
+- On session start the agent calls `analytics.start_call` (channel `browser` or
+  `phone`); a shutdown callback calls `analytics.end_call` however the job ends.
+- The moment a help action completes — a successful `check_scheme_eligibility`
+  lookup or a `create_escalation` — the call is marked successful. **Success is
+  sticky:** a later hiccup never downgrades a call that already helped someone.
+- A call that ends without a success is recorded as **failed**, with a coarse
+  reason (`incomplete`, `no_answer`, `busy`, `declined`, `dial_failed`, `error`).
+- Outcomes live in a tiny SQLite table (`call_analytics.db`, gitignored). The
+  numbers come only from real calls — nothing is hardcoded.
+
+**Privacy (Day 8 requirement).** The store keeps only the random room id,
+channel, timestamps, duration, and a coarse outcome reason. It never stores a
+caller name, phone number, transcript, OTP, PIN, or account number — there is
+nothing sensitive to expose on the dashboard.
+
+### The dashboard
+
+A dependency-free page (stdlib `http.server` only). Run it in a second terminal
+while the agent runs:
+
+```bash
+uv run python src/analytics_dashboard.py    # then open http://localhost:8771
+```
+
+It shows total / successful / failed calls, the success rate, a split by channel,
+failure types, and a recent-call history. It auto-refreshes every few seconds, so
+a call's outcome appears on its own — handy on camera. The same numbers are served
+as JSON at `/stats.json`.
+
 ## Testing
 
 The project includes an eval suite based on the LiveKit Agents [testing framework](https://docs.livekit.io/agents/build/testing/):
@@ -408,7 +462,7 @@ uv run pytest
 The offline suites need no credentials and are the fast way to check the tools:
 
 ```bash
-uv run pytest tests/test_escalation.py tests/test_schemes.py tests/test_outbound.py
+uv run pytest tests/test_escalation.py tests/test_schemes.py tests/test_outbound.py tests/test_analytics.py
 ```
 
 Tests are in [`tests/test_agent.py`](tests/test_agent.py) and use LLM-as-judge evaluations to verify the agent behaves correctly (friendly greetings, grounding, refusing harmful requests).
@@ -448,7 +502,9 @@ backend/
 │   ├── make_call.py      # Day 6 — dispatcher that starts an outbound call
 │   ├── setup_trunk.py    # Day 6 — one-time: create the LiveKit SIP outbound trunk
 │   ├── escalation.py     # Day 7 — human-help store, redaction, ref ids, webhook
-│   └── dashboard.py      # Day 7 — help-desk page a human uses to work requests
+│   ├── dashboard.py      # Day 7 — help-desk page a human uses to work requests
+│   ├── analytics.py      # Day 8 — per-call outcome store (SQLite), success rules
+│   └── analytics_dashboard.py # Day 8 — total/successful/failed calls dashboard
 ├── data/
 │   ├── schemes.json      # Day 5 — curated (local) scheme dataset with as_of date
 │   └── call_log.jsonl    # Day 6 — per-attempt outcome log (gitignored, runtime)
@@ -456,7 +512,8 @@ backend/
 │   ├── test_agent.py     # LLM-judged eval suite
 │   ├── test_schemes.py   # Offline unit tests for the scheme tool
 │   ├── test_outbound.py  # Offline unit tests for outbound calling
-│   └── test_escalation.py # Offline unit tests for human-help escalations
+│   ├── test_escalation.py # Offline unit tests for human-help escalations
+│   └── test_analytics.py # Offline unit tests for Day 8 call analytics
 ├── .env.example           # Environment variable template
 ├── pyproject.toml         # Python dependencies (uv)
 ├── Dockerfile             # Production container
