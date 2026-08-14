@@ -97,6 +97,12 @@ export default async function RootLayout({ children }: RootLayoutProps) {
                 Financial Literacy Helpline
               </span>
               <Link
+                href="/analytics"
+                className="text-muted-foreground hover:text-foreground font-mono text-[10px] font-medium tracking-[0.18em] uppercase transition-colors"
+              >
+                Analytics
+              </Link>
+              <Link
                 href="/help-desk"
                 className="text-muted-foreground hover:text-foreground font-mono text-[10px] font-medium tracking-[0.18em] uppercase transition-colors"
               >

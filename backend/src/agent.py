@@ -7,6 +7,7 @@ from livekit.agents import (
     Agent,
     AgentServer,
     AgentSession,
+    ChatContext,
     JobContext,
     JobProcess,
     RunContext,
@@ -21,8 +22,8 @@ import analytics
 import escalation
 import memory
 import outbound
-import schemes
 from outbound import OutboundContext, Outcome
+from specialist import SchemeSpecialist
 
 logger = logging.getLogger("agent")
 
@@ -45,7 +46,7 @@ A call goes well when you achieve at least one of these:
 3. You point the caller to the right official place, such as their bank branch, an official helpline, or a certified advisor, when the matter needs a human.
 
 KNOWLEDGE
-You know the basics of bank accounts, saving and budgeting, UPI and digital payment safety, common frauds, and the general idea of major Indian government schemes such as Jan Dhan, PMJJBY, PMSBY, Atal Pension Yojana, and Sukanya Samriddhi. You explain things with simple everyday examples. You do NOT know the caller's personal account details, and you do NOT know current interest rates or market prices. For government scheme benefits, eligibility, and documents, do not rely on memory — use the check_scheme_eligibility tool, which gives figures as of a set date. For anything else where numbers matter, say they must be checked from the official source, with the date, and point them to the bank or scheme website.
+You know the basics of bank accounts, saving and budgeting, UPI and digital payment safety, and common frauds. You explain things with simple everyday examples. You do NOT know the caller's personal account details, and you do NOT know current interest rates or market prices. For anything where numbers matter, say they must be checked from the official source, with the date, and point them to the bank or scheme website. You know the NAMES of the major government schemes such as Jan Dhan, PMJJBY, PMSBY, Atal Pension Yojana, and Sukanya Samriddhi, but you do NOT handle scheme detail yourself — eligibility, benefits, premiums, and documents are the scheme specialist's job. See SCHEME SPECIALIST below.
 
 LANGUAGE
 Speak in simple English by default. If the caller mixes in Hindi words, you may mix a little back in the same everyday register so it feels natural, but keep English as your main language. If the caller clearly switches fully to Hindi or another language, follow them. Be warm and respectful, and keep every word simple enough for someone new to banking.
@@ -55,12 +56,22 @@ Always write every language in its own native script.
 - Hindi must be written in Devanagari, like नमस्ते, never romanized like "namaste".
 - Follow the same rule for every other non-English language.
 
-SCHEME LOOKUP
-You have a tool called check_scheme_eligibility that looks up which government schemes a caller qualifies for and the documents each one needs. Use it whenever the caller asks what schemes they can get, whether they are eligible, which scheme suits them, or what papers a scheme needs. Also use it once you naturally know their age and whether they have a bank account, to suggest suitable schemes.
-- Do not interrogate. Gather age and bank-account status gently in normal talk, one question at a time, and only ask for what you are missing.
-- The tool's answer is for you, not a script. Speak it in your own warm words, one scheme at a time, in short sentences. Never read out the raw data or a long list.
-- Always say the information is as of the date the tool returns, and that exact amounts must be confirmed at the bank before enrolling.
-- If the tool returns an error, tell the caller warmly that you cannot check just now and to try again shortly or visit their bank. Never invent a scheme or its details.
+SCHEME SPECIALIST — hand off, do not answer yourself
+Scheme detail is not your job. There is a specialist, Yojana Mitra, who handles
+government central schemes: which schemes a caller qualifies for, what a scheme
+gives, its premium, and the documents an enrolment needs. You have a tool,
+transfer_to_scheme_specialist, that connects the caller to that specialist.
+- Use it the MOMENT the caller asks anything about a government scheme:
+  eligibility, which scheme suits them, a scheme's benefit or premium, or the
+  papers a scheme needs. Do not try to answer the scheme detail yourself, and do
+  not quote scheme figures from memory.
+- Before you call the tool, say ONE short, warm line telling the caller you are
+  connecting them to the scheme specialist, for example: "Let me connect you to
+  our scheme specialist, who can help with that." Then call the tool.
+- The specialist can see the whole conversation, so the caller will not have to
+  repeat themselves. Do NOT gather their age or documents first — just hand off.
+- Only hand off for schemes. For everything else on your list — banking basics,
+  saving, UPI safety, fraud — keep helping the caller yourself.
 
 MEMORY — remembering callers across calls
 You have three tools: recall_caller, remember_caller, and forget_caller. Follow these steps exactly. They are how you stop a returning caller from having to repeat themselves, so treat them as part of the job, not an extra.
@@ -134,8 +145,10 @@ class Assistant(Agent):
         ctx: JobContext | None = None,
         outbound_ctx: OutboundContext | None = None,
         call_id: str | None = None,
+        chat_ctx: ChatContext | None = None,
+        skip_greeting: bool = False,
     ) -> None:
-        super().__init__(instructions=instructions)
+        super().__init__(instructions=instructions, chat_ctx=chat_ctx)
         # Inbound uses the default greeting/prompt. Outbound passes a tailored
         # opening (who's calling, why, how to stop) and a context so end_call can
         # hang up the phone and record how the call went.
@@ -146,8 +159,24 @@ class Assistant(Agent):
         # outbound (independent of _ctx, which stays outbound-only) so a success
         # can be attributed to this call from any tool.
         self._call_id = call_id
+        # Day 9: when the scheme specialist hands the call BACK to us, we are
+        # resuming an in-progress conversation (chat_ctx is carried over), so we
+        # must NOT replay the full opening greeting. skip_greeting flips that.
+        self._skip_greeting = skip_greeting
 
     async def on_enter(self) -> None:
+        if self._skip_greeting:
+            # Day 9 hand-back: pick the conversation up mid-flow instead of
+            # greeting from scratch, using the context the specialist passed us.
+            await self.session.generate_reply(
+                instructions=(
+                    "You are Dhan Saathi and the scheme specialist has just "
+                    "handed this caller back to you. In one short, warm line, "
+                    "welcome them back without re-greeting from scratch, then "
+                    "continue helping with whatever they need now."
+                )
+            )
+            return
         # Speak the first-turn greeting as soon as Saathi joins the call.
         await self.session.say(self._greeting, allow_interruptions=True)
 
@@ -269,56 +298,34 @@ class Assistant(Agent):
         return f"There was nothing saved about {name} to forget."
 
     @function_tool
-    async def check_scheme_eligibility(
-        self,
-        context: RunContext,
-        age: int | None = None,
-        gender: str = "",
-        has_bank_account: bool = True,
-        girl_child_age: int | None = None,
-    ):
-        """Find which government schemes the caller qualifies for and list the documents needed.
+    async def transfer_to_scheme_specialist(self, context: RunContext):
+        """Hand the conversation to Yojana Mitra, the government scheme specialist.
 
-        Call this whenever the caller asks what government schemes they can get,
-        which scheme suits them, whether they are eligible for a scheme, or what
-        documents a scheme needs. Also call it once you have naturally gathered
-        the caller's basic details (age, whether they have a bank account) and it
-        would help to suggest suitable schemes.
+        Call this the MOMENT the caller asks anything about a government central
+        scheme — for example: which schemes they can get, whether they are
+        eligible, which scheme suits them, what a scheme gives or costs, or what
+        documents an enrolment needs. Scheme detail is the specialist's job, not
+        yours; do not try to answer it yourself and do not quote scheme figures.
 
-        Do NOT interrogate the caller. Ask only for details you are missing, one
-        at a time, in plain words, and only if they are needed. You can call this
-        with just the details you already have.
+        Do NOT call this for anything else. General banking, saving, UPI or
+        payment safety, fraud, memory, and escalation all stay with you.
 
-        The result is background data for YOU, not a script. Speak it naturally,
-        one scheme at a time, in short sentences. Never read out JSON, field
-        names, or the whole list at once. Always mention that the scheme
-        information is as of the returned date, and that exact amounts must be
-        confirmed at the bank. If status is "error", follow the message: tell the
-        caller warmly that you cannot check right now, and do not invent schemes.
-
-        Args:
-            age: The caller's own age in years, if you know it.
-            gender: "female", "male", or leave empty if not known.
-            has_bank_account: Whether the caller already has a bank account.
-            girl_child_age: Only if the caller is asking about a young daughter —
-                her age in years. This is what surfaces the girl-child scheme.
+        Before you call this tool, say ONE short line telling the caller you are
+        connecting them to the scheme specialist. The specialist can see the
+        whole conversation, so the caller will not have to repeat themselves.
         """
-        result = await asyncio.to_thread(
-            schemes.check_eligibility,
-            age,
-            gender,
-            has_bank_account,
-            girl_child_age,
+        logger.info("Handing off from main guide to the scheme specialist")
+        # Returning an Agent makes the session switch to it. chat_ctx carries the
+        # whole conversation so the specialist continues seamlessly; call_id keeps
+        # Day 8 success attribution pointed at this same call; ctx/outbound let
+        # the specialist rebuild us faithfully if it hands the call back.
+        return SchemeSpecialist(
+            chat_ctx=self.chat_ctx,
+            call_id=self._call_id,
+            ctx=self._ctx,
+            outbound_ctx=self._outbound,
+            greeting=self._greeting,
         )
-        logger.info("Scheme lookup returned status=%s", result.get("status"))
-        # Day 8: a completed eligibility/document lookup is a success condition
-        # for this call (the caller got the concrete help they came for). An
-        # errored lookup is not counted — the call may still succeed another way.
-        if result.get("status") != "error":
-            await asyncio.to_thread(
-                analytics.mark_success, self._call_id, analytics.Success.ELIGIBILITY_CHECK.value
-            )
-        return result
 
     @function_tool
     async def create_escalation(
